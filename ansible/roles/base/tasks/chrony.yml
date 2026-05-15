@@ -1,0 +1,21 @@
+---
+# chrony handles intermittent links (cellular, field deployments) better
+# than systemd-timesyncd. Disable timesyncd, enable chrony.
+
+- name: Ensure chrony is installed
+  ansible.builtin.apt:
+    name: chrony
+    state: present
+
+- name: Disable systemd-timesyncd if present
+  ansible.builtin.systemd:
+    name: systemd-timesyncd
+    enabled: false
+    state: stopped
+  failed_when: false   # service may not exist on every image
+
+- name: Ensure chrony is enabled and running
+  ansible.builtin.systemd:
+    name: chrony
+    enabled: true
+    state: started

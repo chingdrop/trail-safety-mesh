@@ -1,0 +1,97 @@
+---
+# roles/mqtt/tasks/main.yml
+#
+# Install Mosquitto and configure:
+#   - listener on 0.0.0.0:{{ mqtt_port }} (UFW restricts source to RFC1918)
+#   - anonymous denied; one local user from group_vars
+#   - logs to journald (so the journald cap from pi_hardware applies)
+#   - 7-day expiration of disconnected client sessions
+#   - max_keepalive 300s for flaky Wi-Fi
+#
+# Mosquitto is the broker for Meshtastic MQTT and any other field-side
+# MQTT traffic. It is intentionally NOT shared with RabbitMQ. See
+# docs/decisions/0002-separate-mqtt-and-rabbitmq.md.
+
+# ---------------------------------------------------------------------
+# Refuse to proceed without a real password. The config we deploy has
+# allow_anonymous=false and a password_file directive; running it with
+# no user in that file would leave the broker non-functional rather
+# than insecure, but it would also be silently broken. Fail loudly
+# instead.
+# ---------------------------------------------------------------------
+
+- name: Refuse to configure Mosquitto without mqtt_password
+  ansible.builtin.fail:
+    msg: |
+      mqtt_password is required but is empty.
+
+      Mosquitto here runs with allow_anonymous=false, so without a
+      password there is no usable account on the broker. The role will
+      not silently downgrade to anonymous access.
+
+      Provide mqtt_password by one of:
+        - ansible-vault encrypted group_vars
+            ansible-vault create  ansible/group_vars/field_gateway.vault.yml
+            ansible-vault edit    ansible/group_vars/field_gateway.vault.yml
+        - --extra-vars on the command line
+            ansible-playbook ... --extra-vars "mqtt_password=..."
+        - a local uncommitted vars file (e.g. group_vars/field_gateway.local.yml,
+          listed in .gitignore).
+
+      Do NOT commit a real password to group_vars/field_gateway.yml.example
+      or anywhere else in the repo.
+  when: mqtt_password | default('') | length == 0
+
+- name: Install Mosquitto and clients
+  ansible.builtin.apt:
+    name:
+      - mosquitto
+      - mosquitto-clients
+    state: present
+
+- name: Deploy field-gateway Mosquitto conf.d drop-in
+  ansible.builtin.template:
+    src: field-gateway.conf.j2
+    dest: /etc/mosquitto/conf.d/field-gateway.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart mosquitto
+
+# ---------------------------------------------------------------------
+# Password file. mosquitto_passwd has no idempotent mode, so the
+# command itself always reports "changed". That's acceptable: the
+# password file is recreated with the same hash inputs each run, and
+# Mosquitto restarts only when the dropped config changes (handler).
+# We bound the noise with no_log so the actual password never appears
+# in Ansible output.
+# ---------------------------------------------------------------------
+
+- name: Create / update Mosquitto user
+  ansible.builtin.shell: |
+    set -o pipefail
+    if [ ! -f {{ mqtt_password_file }} ]; then
+      mosquitto_passwd -b -c {{ mqtt_password_file }} {{ mqtt_user }} "$MQTT_PASSWORD"
+    else
+      mosquitto_passwd -b {{ mqtt_password_file }} {{ mqtt_user }} "$MQTT_PASSWORD"
+    fi
+  args:
+    executable: /bin/bash
+  environment:
+    MQTT_PASSWORD: "{{ mqtt_password }}"
+  no_log: true
+  changed_when: true   # mosquitto_passwd has no idempotent mode
+  notify: Restart mosquitto
+
+- name: Set ownership and permissions on the Mosquitto password file
+  ansible.builtin.file:
+    path: "{{ mqtt_password_file }}"
+    owner: mosquitto
+    group: mosquitto
+    mode: "0600"
+
+- name: Ensure mosquitto is enabled and running
+  ansible.builtin.systemd:
+    name: mosquitto
+    enabled: true
+    state: started

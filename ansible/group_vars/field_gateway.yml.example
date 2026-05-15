@@ -1,0 +1,124 @@
+---
+# group_vars/field_gateway.yml.example
+# ----------------------------------------------------------------------
+# Copy to group_vars/field_gateway.yml and fill in values. The real
+# file is gitignored.
+#
+# Anything sensitive (passwords, channel keys, private certs) should
+# either be left out of this file entirely or pulled from Ansible Vault.
+# See the comments below each section for what is and isn't safe.
+
+# ---------------------------------------------------------------------
+# Identity
+# ---------------------------------------------------------------------
+
+# Linux user that owns SSH keys, Mosquitto config ownership, group
+# memberships, etc. Default Ubuntu Pi imager user is "raspi" or "ubuntu".
+field_gateway_user: raspi
+
+# Hostname applied via hostnamectl. Also written to /etc/hosts as 127.0.1.1.
+field_gateway_hostname: field-gateway
+
+# SSH public key authorized for field_gateway_user. Paste the single
+# line as it appears in your password manager. Do NOT paste your
+# private key.
+#
+# Example:
+#   ssh-ed25519 AAAAC3Nza... operator@laptop
+field_gateway_ssh_pubkey: ""
+
+# ---------------------------------------------------------------------
+# Feature toggles -- which roles do something on this host
+# ---------------------------------------------------------------------
+
+meshtasticd_enabled: true
+mqtt_enabled: true
+opentakserver_enabled: false   # OTS prereqs + RabbitMQ; opt-in.
+
+# ---------------------------------------------------------------------
+# MQTT (Mosquitto)
+# ---------------------------------------------------------------------
+
+mqtt_user: fieldgw
+mqtt_port: 1883
+
+# Password for mqtt_user. REQUIRED. The mqtt role refuses to run with
+# this empty -- it will not silently fall back to anonymous access.
+#
+# Leave this BLANK in the committed example. In your real deployment,
+# provide it via one of:
+#   - ansible-vault encrypted group_vars
+#       ansible-vault create  ansible/group_vars/field_gateway.vault.yml
+#       (put `mqtt_password: ...` inside, and reference the vault file
+#        with --ask-vault-pass at run time)
+#   - --extra-vars on the command line
+#       ansible-playbook ... --extra-vars "mqtt_password=..."
+#   - a local uncommitted vars file (e.g. group_vars/field_gateway.local.yml,
+#     which is matched by .gitignore)
+mqtt_password: ""
+
+# ---------------------------------------------------------------------
+# Meshtastic / radio
+# ---------------------------------------------------------------------
+# TODO: The exact install path for meshtasticd on Ubuntu 24.04 arm64
+# with RAK6421 + RAK13300 has not been validated by this repo yet.
+# The role installs meshtasticd via apt from the Meshtastic repo if
+# enabled, but the SPI/GPIO wiring config below is a placeholder.
+
+# Mark true once the RAK6421 + RAK13300 HAT is physically installed.
+# When true, pi_hardware will enable SPI and add the user to spi/gpio/i2c
+# groups, and meshtasticd will deploy its config template.
+meshtasticd_rak_hat_present: false
+
+# Region for meshtasticd. Set this; LoRa is region-regulated.
+# Example values: US, EU_868, EU_433, AU_915. See Meshtastic docs.
+meshtasticd_region: "US"
+
+# Long-name / short-name on the mesh. Public; ok to commit.
+meshtasticd_long_name: "FieldGateway"
+meshtasticd_short_name: "FGW"
+
+# Channel pre-shared key. SENSITIVE -- leave blank in the example file
+# and supply it via Ansible Vault when you actually deploy.
+meshtasticd_primary_channel_psk: ""
+
+# ---------------------------------------------------------------------
+# Firewall (UFW)
+# ---------------------------------------------------------------------
+# Trusted source networks for inbound rules. RFC1918 by default; tighten
+# to your specific LAN/field subnet for production.
+firewall_trusted_v4_networks:
+  - "10.0.0.0/8"
+  - "172.16.0.0/12"
+  - "192.168.0.0/16"
+
+firewall_trusted_v6_networks:
+  - "fc00::/7"     # IPv6 ULA
+  - "fe80::/10"    # IPv6 link-local
+
+# Which service ports to open from the trusted networks above.
+# RabbitMQ ports are deliberately NOT in this list; AMQP stays
+# loopback / container-internal. See ADR 0002.
+firewall_open_ssh: true
+firewall_open_mqtt: true
+firewall_open_ots: false           # set true after OTS is installed
+firewall_open_meshtasticd_api: false   # native TCP API (if exposed)
+
+# Override ports here if you customised them.
+firewall_port_ssh: 22
+firewall_port_mqtt: "{{ mqtt_port }}"
+firewall_port_ots_marti: 8443      # OTS Marti API / web UI
+firewall_port_ots_cot_tls: 8089    # OTS CoT TLS
+firewall_port_meshtasticd_api: 4403  # Meshtastic native TCP API
+
+# ---------------------------------------------------------------------
+# OpenTAKServer (host prereqs only)
+# ---------------------------------------------------------------------
+# We install the packages OTS needs (Python venv tooling, build chain,
+# nginx, postgresql, rabbitmq-server). The OTS app installer itself is
+# interactive and is NOT run by Ansible. See docs/architecture.md.
+opentakserver_install_prereqs: true
+
+# Mosquitto owns 1883/tcp; OTS must not claim it. Default is false.
+# See docs/decisions/0002-separate-mqtt-and-rabbitmq.md.
+opentakserver_stop_mosquitto_during_install: false

@@ -1,0 +1,20 @@
+---
+firewall_trusted_v4_networks:
+  - "10.0.0.0/8"
+  - "172.16.0.0/12"
+  - "192.168.0.0/16"
+
+firewall_trusted_v6_networks:
+  - "fc00::/7"
+  - "fe80::/10"
+
+firewall_open_ssh: true
+firewall_open_mqtt: true
+firewall_open_ots: false
+firewall_open_meshtasticd_api: false
+
+firewall_port_ssh: 22
+firewall_port_mqtt: 1883
+firewall_port_ots_marti: 8443
+firewall_port_ots_cot_tls: 8089
+firewall_port_meshtasticd_api: 4403

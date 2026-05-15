@@ -1,0 +1,23 @@
+---
+# Group memberships granted to the operator user for hardware access.
+# 'video' is needed for vcgencmd on the Pi (the udev rule below extends
+# /dev/vcio to mode 0660 group=video).
+# spi/gpio/i2c are added when meshtasticd_rak_hat_present is true.
+pi_hardware_base_groups:
+  - video
+  - dialout
+
+pi_hardware_radio_groups:
+  - spi
+  - gpio
+  - i2c
+
+# fstab tuning for SD-card-backed root.
+pi_hardware_fstab_options:
+  - noatime
+  - commit=60
+
+# journald caps to bound write wear and storage growth.
+pi_hardware_journald_system_max_use: "200M"
+pi_hardware_journald_system_max_file_size: "50M"
+pi_hardware_journald_runtime_max_use: "50M"

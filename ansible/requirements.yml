@@ -1,0 +1,16 @@
+---
+# Ansible collections required by trail-safety-mesh.
+#
+# Install with:
+#   ansible-galaxy collection install -r ansible/requirements.yml
+#
+# Versions are intentionally unpinned. If a future upgrade breaks
+# something, pin the version here (e.g. `version: ">=8.0.0,<10.0.0"`)
+# and document the reason inline.
+
+collections:
+  - name: community.general
+    # Provides community.general.ufw used by roles/firewall.
+  - name: ansible.posix
+    # Provides ansible.posix.authorized_key (roles/base) and
+    # ansible.posix.mount (roles/pi_hardware).

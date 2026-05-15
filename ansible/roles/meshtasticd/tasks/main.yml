@@ -1,0 +1,91 @@
+---
+# roles/meshtasticd/tasks/main.yml
+#
+# Installs the Linux-native Meshtastic daemon. The exact install method
+# on Ubuntu 24.04 (arm64) with a RAK6421 + RAK13300 HAT is not pinned
+# at the time of writing -- the upstream project distributes meshtasticd
+# via OBS (openSUSE Build Service) repos, and the right branch/tag pair
+# changes over time. Treat the steps below as a scaffold and verify
+# against upstream docs before each real deployment.
+#
+# References to confirm (TODO):
+#   - https://meshtastic.org/docs/hardware/devices/linux-native-hardware/
+#   - https://github.com/meshtastic/firmware (meshtasticd subdir)
+#   - The OBS download.opensuse.org repo URL for noble + arm64.
+#
+# This file deliberately uses ansible.builtin.debug + when: false blocks
+# in places where the upstream commands would normally run, so a
+# misconfigured run doesn't trash a working host.
+
+- name: TODO -- meshtasticd install path is not pinned
+  ansible.builtin.debug:
+    msg: |
+      The meshtasticd role is a scaffold. Before deploying to real
+      hardware, confirm and uncomment the apt repo + package install
+      block below. Until then, this role only deploys config (if asked)
+      and sets group memberships; it does not install meshtasticd itself.
+
+# ---------------------------------------------------------------------
+# Apt repo + package install -- INTENTIONALLY DISABLED until verified.
+# Uncomment when you have validated the URL and key.
+# ---------------------------------------------------------------------
+#
+# - name: Add meshtasticd apt signing key
+#   ansible.builtin.get_url:
+#     url: "https://download.opensuse.org/repositories/network:/Meshtastic:/{{ meshtasticd_apt_repo_branch }}/Debian_12/Release.key"
+#     dest: /etc/apt/keyrings/meshtasticd.asc
+#     mode: "0644"
+#
+# - name: Add meshtasticd apt source
+#   ansible.builtin.copy:
+#     dest: /etc/apt/sources.list.d/meshtasticd.list
+#     mode: "0644"
+#     content: |
+#       deb [signed-by=/etc/apt/keyrings/meshtasticd.asc] \
+#         https://download.opensuse.org/repositories/network:/Meshtastic:/{{ meshtasticd_apt_repo_branch }}/Debian_12/ ./
+#
+# - name: Install meshtasticd
+#   ansible.builtin.apt:
+#     name: meshtasticd
+#     state: present
+#     update_cache: true
+
+# ---------------------------------------------------------------------
+# Config template
+# ---------------------------------------------------------------------
+
+- name: Ensure /etc/meshtasticd exists before templating config
+  ansible.builtin.file:
+    path: /etc/meshtasticd
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: meshtasticd_manage_config | bool
+
+- name: Deploy meshtasticd config (when meshtasticd_manage_config is true)
+  ansible.builtin.template:
+    src: meshtasticd.config.yaml.j2
+    dest: /etc/meshtasticd/config.yaml
+    owner: root
+    group: root
+    mode: "0640"
+    backup: true
+  when: meshtasticd_manage_config | bool
+  notify: Restart meshtasticd
+
+# ---------------------------------------------------------------------
+# Service enablement -- only when the unit actually exists.
+# ---------------------------------------------------------------------
+
+- name: Check if meshtasticd systemd unit exists
+  ansible.builtin.stat:
+    path: "/lib/systemd/system/{{ meshtasticd_service_name }}.service"
+  register: meshtasticd_unit
+
+- name: Ensure meshtasticd is enabled and running
+  ansible.builtin.systemd:
+    name: "{{ meshtasticd_service_name }}"
+    enabled: true
+    state: started
+  when: meshtasticd_unit.stat.exists

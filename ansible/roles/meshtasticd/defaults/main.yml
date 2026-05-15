@@ -1,0 +1,16 @@
+---
+# Source for meshtasticd. The upstream project publishes apt repos via OBS
+# (openSUSE Build Service) at:
+#   https://download.opensuse.org/repositories/network:/Meshtastic:/<branch>/
+# TODO: Confirm the exact branch + URL for Ubuntu 24.04 arm64 (noble) at
+# the time of deployment. The values below are conservative placeholders;
+# verify before the first real run.
+meshtasticd_apt_repo_branch: "alpha"
+
+# Will be templated into /etc/meshtasticd/config.yaml if the file is owned
+# by us. If you want meshtasticd to keep its packaged default config, set
+# meshtasticd_manage_config: false in group_vars.
+meshtasticd_manage_config: false
+
+# Service name as packaged by meshtasticd.
+meshtasticd_service_name: meshtasticd

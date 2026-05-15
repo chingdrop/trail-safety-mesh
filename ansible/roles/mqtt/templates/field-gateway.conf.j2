@@ -1,0 +1,19 @@
+# Managed by Ansible (trail-safety-mesh / roles/mqtt).
+# Field-gateway Mosquitto local overrides.
+
+# Listen on all interfaces; UFW restricts to trusted networks.
+listener {{ mqtt_port }}
+
+# No anonymous access.
+allow_anonymous false
+password_file {{ mqtt_password_file }}
+
+# Log to stderr so systemd captures into journald (journald is capped
+# by roles/pi_hardware, so this also bounds Mosquitto's log growth).
+log_dest stderr
+
+# Drop disconnected clients' retained sessions after this long.
+persistent_client_expiration {{ mqtt_persistent_client_expiration }}
+
+# Force a keepalive ceiling; catches dead clients on flaky Wi-Fi quickly.
+max_keepalive {{ mqtt_max_keepalive }}

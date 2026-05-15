@@ -1,0 +1,26 @@
+---
+# Authorize the operator's public key. Refuse to proceed without one,
+# since the next step (ssh_hardening) disables password auth and would
+# otherwise lock the user out.
+
+- name: Fail if no SSH public key was provided
+  ansible.builtin.fail:
+    msg: >-
+      field_gateway_ssh_pubkey is empty. Set it in group_vars/field_gateway.yml
+      before running this playbook. Without a key, ssh_hardening would lock
+      you out.
+  when: field_gateway_ssh_pubkey | default('') | length == 0
+
+- name: Sanity-check the public key format
+  ansible.builtin.assert:
+    that:
+      - field_gateway_ssh_pubkey is match('^(ssh-ed25519|ssh-rsa|ecdsa-sha2-[A-Za-z0-9]+)\s+[A-Za-z0-9+/=]+')
+    fail_msg: >-
+      field_gateway_ssh_pubkey does not look like a valid public key.
+      Expected: "ssh-ed25519|ssh-rsa|ecdsa-... AAAA... [comment]"
+
+- name: Authorize the operator SSH key
+  ansible.posix.authorized_key:
+    user: "{{ field_gateway_user }}"
+    state: present
+    key: "{{ field_gateway_ssh_pubkey }}"

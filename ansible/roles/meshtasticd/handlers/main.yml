@@ -1,0 +1,6 @@
+---
+- name: Restart meshtasticd
+  ansible.builtin.systemd:
+    name: "{{ meshtasticd_service_name }}"
+    state: restarted
+  failed_when: false

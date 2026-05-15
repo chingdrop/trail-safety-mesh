@@ -1,0 +1,135 @@
+---
+# roles/opentakserver/tasks/main.yml
+#
+# Pre-install everything the OpenTAKServer (OTS) installer expects.
+# The OTS installer itself is interactive (CA fields, admin password,
+# MediaMTX yes/no) and downloads code from a third-party URL we don't
+# control. Run it manually after this playbook:
+#
+#   curl -s -L https://i.opentakserver.io/ubuntu_installer | bash -
+#
+# Why we pre-install:
+#   The OTS installer has no error handling. If apt can't resolve a
+#   dependency, the installer keeps going and prints "Installed!" at
+#   the end whether anything actually worked. Pre-installing every
+#   prerequisite via Ansible means the installer's only remaining job
+#   is OTS-specific (venv contents, CA cert, systemd units), which is
+#   easier to verify after the fact.
+#
+# Port-1883 ownership: Mosquitto owns 1883/tcp in this architecture.
+# OpenTAKServer must NOT claim it. This role does NOT stop Mosquitto
+# on the default path. If the OTS installer tries to start its own
+# broker on 1883 it will fail because Mosquitto is already there --
+# that is the correct outcome. Resolve it by pointing OTS at the
+# existing Mosquitto, not by stopping Mosquitto.
+# See docs/decisions/0002-separate-mqtt-and-rabbitmq.md.
+#
+# RabbitMQ note: RabbitMQ is installed here only as an OTS dependency
+# for AMQP on 5672/tcp. Its MQTT plugin (rabbitmq_mqtt) is explicitly
+# disabled below so RabbitMQ cannot grab 1883/tcp.
+
+- name: Install OTS Python toolchain packages
+  ansible.builtin.apt:
+    name: "{{ opentakserver_py_packages }}"
+    state: present
+  when: opentakserver_install_prereqs | bool
+
+- name: Install OTS build toolchain packages
+  ansible.builtin.apt:
+    name: "{{ opentakserver_build_packages }}"
+    state: present
+  when: opentakserver_install_prereqs | bool
+
+- name: Install OTS service-dependency packages
+  ansible.builtin.apt:
+    name: "{{ opentakserver_service_packages }}"
+    state: present
+  when: opentakserver_install_prereqs | bool
+
+# ---------------------------------------------------------------------
+# RabbitMQ MQTT plugin lockdown.
+# Even though we never enable rabbitmq_mqtt ourselves, a previous run
+# or a third-party tool could have. Explicitly disable the plugin so
+# RabbitMQ cannot bind 1883/tcp behind our back. Implemented via
+# `rabbitmq-plugins` so we don't take a hard dependency on the
+# community.rabbitmq collection.
+# ---------------------------------------------------------------------
+
+- name: Detect rabbitmq_mqtt plugin state
+  ansible.builtin.command: rabbitmq-plugins list -e -m rabbitmq_mqtt
+  register: rabbitmq_mqtt_state
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when:
+    - opentakserver_install_prereqs | bool
+    - "'rabbitmq-server' in opentakserver_service_packages"
+
+- name: Disable rabbitmq_mqtt plugin (keep 1883/tcp clear for Mosquitto)
+  ansible.builtin.command: rabbitmq-plugins disable rabbitmq_mqtt
+  when:
+    - opentakserver_install_prereqs | bool
+    - "'rabbitmq-server' in opentakserver_service_packages"
+    - "'rabbitmq_mqtt' in (rabbitmq_mqtt_state.stdout | default(''))"
+  notify: Restart rabbitmq-server
+
+# ---------------------------------------------------------------------
+# Legacy escape hatch: stop Mosquitto for the OTS install handoff.
+# Default is FALSE. Flipping it true overrides ADR 0002.
+# ---------------------------------------------------------------------
+
+- name: Warn loudly if the legacy Mosquitto stop is enabled
+  ansible.builtin.debug:
+    msg: |
+      WARNING: opentakserver_stop_mosquitto_during_install is true.
+      This overrides ADR 0002 (Mosquitto owns 1883/tcp). The OTS
+      installer's own mosquitto config will collide with the one in
+      roles/mqtt. Proceed only if you know what you are unwinding.
+  when: opentakserver_stop_mosquitto_during_install | bool
+
+- name: Check whether mosquitto unit exists (legacy path only)
+  ansible.builtin.stat:
+    path: /lib/systemd/system/mosquitto.service
+  register: mosquitto_unit
+  when: opentakserver_stop_mosquitto_during_install | bool
+
+- name: Stop and disable mosquitto (LEGACY -- overrides ADR 0002)
+  ansible.builtin.systemd:
+    name: mosquitto
+    enabled: false
+    state: stopped
+  when:
+    - opentakserver_stop_mosquitto_during_install | bool
+    - mosquitto_unit.stat.exists | default(false)
+
+# ---------------------------------------------------------------------
+# Service liveness sanity-check on what we just installed.
+# ---------------------------------------------------------------------
+
+- name: Verify OTS service-dependency packages are running
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: started
+    enabled: true
+  loop: "{{ opentakserver_service_packages }}"
+  when: opentakserver_install_prereqs | bool
+
+- name: Print next-step reminder
+  ansible.builtin.debug:
+    msg: |
+      OpenTAKServer prerequisites are installed. To install OTS itself:
+
+          curl -s -L https://i.opentakserver.io/ubuntu_installer | bash -
+
+      The installer is interactive; save the admin password it generates
+      in your password manager. After it finishes, verify with:
+
+          systemctl is-active opentakserver cot_parser eud_handler eud_handler_ssl mediamtx
+
+      IMPORTANT: Mosquitto owns 1883/tcp. If the OTS installer tries to
+      start its own broker on that port it will fail; that is correct.
+      Edit any mosquitto config the OTS installer drops under
+      /etc/mosquitto/conf.d/ to remove its own listener on 1883 (or
+      delete that file entirely), and let the listener from roles/mqtt
+      remain the only one. Do not "fix" the collision by stopping
+      Mosquitto.

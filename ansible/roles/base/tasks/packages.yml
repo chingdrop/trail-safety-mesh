@@ -1,0 +1,10 @@
+---
+# Install the baseline admin toolkit. Each package is here for a specific
+# reason; resist expanding this list without justification. To add a
+# package for one host, override base_admin_packages in group_vars or
+# host_vars rather than editing this file.
+
+- name: Install baseline admin packages
+  ansible.builtin.apt:
+    name: "{{ base_admin_packages }}"
+    state: present

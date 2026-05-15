@@ -1,0 +1,52 @@
+---
+# SD-wear hardening:
+#   1. Cap journald disk + runtime usage so logs don't fill the card.
+#   2. Add noatime,commit=60 to / mount options in /etc/fstab.
+# We DO NOT add a /tmp tmpfs; Ubuntu 24+ has that as default.
+
+- name: Journald size caps drop-in
+  ansible.builtin.copy:
+    dest: /etc/systemd/journald.conf.d/00-field-gateway-limits.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible (trail-safety-mesh / roles/pi_hardware).
+      # SAR field deployment on SD card; cap disk usage and forwarding.
+      [Journal]
+      SystemMaxUse={{ pi_hardware_journald_system_max_use }}
+      SystemMaxFileSize={{ pi_hardware_journald_system_max_file_size }}
+      RuntimeMaxUse={{ pi_hardware_journald_runtime_max_use }}
+      Storage=persistent
+      ForwardToSyslog=no
+  notify: Restart journald
+
+# ---------------------------------------------------------------------
+# fstab: ensure / has noatime,commit=60
+# We use ansible.posix.mount which is idempotent and handles options
+# in-place. It re-writes the matching line preserving the rest.
+# ---------------------------------------------------------------------
+
+- name: Discover current / mount source and fstype
+  ansible.builtin.shell: |
+    set -o pipefail
+    findmnt -no SOURCE,FSTYPE /
+  args:
+    executable: /bin/bash
+  register: root_mount
+  changed_when: false
+  check_mode: false
+
+- name: Parse / mount source and fstype
+  ansible.builtin.set_fact:
+    root_src: "{{ root_mount.stdout.split()[0] }}"
+    root_fstype: "{{ root_mount.stdout.split()[1] }}"
+
+- name: Apply SD-wear fstab options on /
+  ansible.posix.mount:
+    path: /
+    src: "{{ root_src }}"
+    fstype: "{{ root_fstype }}"
+    opts: "defaults,{{ pi_hardware_fstab_options | join(',') }}"
+    state: mounted
+  when: root_fstype == "ext4"

@@ -1,0 +1,39 @@
+---
+# Radio HAT enablement -- RAK6421 + RAK13300 on the Pi 4.
+#
+# TODO: The exact sequence to enable SPI / configure pin assignments
+# for the RAK6421 + RAK13300 combination on Ubuntu Server 24.04 (which
+# uses /boot/firmware/config.txt rather than Raspberry Pi OS's
+# /boot/config.txt) has NOT been validated by this repo yet. The tasks
+# below are placeholders that document the intent without making
+# unverified changes.
+#
+# When the install path is pinned, fill these in. Until then, this
+# file is a no-op except for printing a reminder.
+
+- name: TODO -- RAK HAT enablement is not yet implemented
+  ansible.builtin.debug:
+    msg: |
+      meshtasticd_rak_hat_present is true, but the RAK6421 + RAK13300
+      enablement steps in roles/pi_hardware/tasks/radio.yml are
+      placeholders. Before deploying to real hardware, fill in:
+        - /boot/firmware/config.txt overlays for SPI + RAK HAT
+        - any required device-tree adjustments
+        - confirmation of the GPIO pins meshtasticd should bind to
+      Then remove this debug task.
+
+# Example skeleton (commented out -- enable when verified):
+#
+# - name: Ensure SPI is enabled in /boot/firmware/config.txt
+#   ansible.builtin.lineinfile:
+#     path: /boot/firmware/config.txt
+#     regexp: '^#?dtparam=spi='
+#     line: 'dtparam=spi=on'
+#   notify: Reboot required note
+#
+# - name: Ensure RAK HAT overlay is loaded
+#   ansible.builtin.lineinfile:
+#     path: /boot/firmware/config.txt
+#     line: 'dtoverlay=spi0-1cs,cs0_pin=8'
+#     state: present
+#   notify: Reboot required note

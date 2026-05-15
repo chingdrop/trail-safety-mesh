@@ -1,0 +1,14 @@
+---
+# Set hostname via hostnamectl and update /etc/hosts 127.0.1.1 entry
+# (Debian/Ubuntu convention).
+
+- name: Set the system hostname
+  ansible.builtin.hostname:
+    name: "{{ field_gateway_hostname }}"
+
+- name: Ensure /etc/hosts has a 127.0.1.1 entry for the hostname
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: '^127\.0\.1\.1\s'
+    line: "127.0.1.1\t{{ field_gateway_hostname }}"
+    backup: true

@@ -1,0 +1,38 @@
+---
+# Default packages installed by roles/base. Override in group_vars if needed.
+base_admin_packages:
+  - git
+  - curl
+  - wget
+  - ca-certificates
+  - gnupg
+  - lsb-release
+  - jq
+  - tmux
+  - htop
+  - iotop
+  - iftop
+  - iw
+  - vim
+  - rsync
+  - lsof
+  - bind9-dnsutils
+  - net-tools
+  - bash-completion
+  - python3
+  - python3-venv
+  - python3-pip
+  - chrony
+  - ufw
+  - unattended-upgrades
+  - needrestart
+  - pciutils
+  - usbutils
+  - wireless-tools
+
+# Apt source pockets we ensure are present in /etc/apt/sources.list.d/ubuntu.sources.
+# The Pi Imager Ubuntu 24.04 image ships only `noble` + `noble-security`; without
+# these, version-pinned -dev packages fail to install. See ADR / phase 00 history.
+base_required_apt_suites:
+  - noble-updates
+  - noble-backports

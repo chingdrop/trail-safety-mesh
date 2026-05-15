@@ -1,0 +1,10 @@
+# inventory.ini.example
+# ----------------------------------------------------------------------
+# Copy to inventory.ini and edit. inventory.ini is gitignored.
+#
+# Replace 192.0.2.10 with your Pi's LAN IP. ansible_user must match the
+# Linux user on the Pi (default Ubuntu Pi-Imager user is `raspi` or
+# `ubuntu`, depending on which name you set at imaging time).
+
+[field_gateway]
+field-gateway-01 ansible_host=192.0.2.10 ansible_user=raspi

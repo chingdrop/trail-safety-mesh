@@ -1,0 +1,85 @@
+---
+# Ensure /etc/apt/sources.list.d/ubuntu.sources contains noble-updates
+# and noble-backports in addition to the noble + noble-security pockets
+# that the Pi Imager 24.04 image ships with.
+#
+# Background: without -updates, version-pinned -dev packages (zlib1g-dev,
+# libssl-dev, python3-venv) fail to install when -security has already
+# shipped a fix, and the OpenTAKServer installer downstream silently
+# reports success while leaving the system half-built.
+#
+# Implementation note: this is one of the rare spots where shell is
+# cleaner than a native module, because we need to read and selectively
+# append to a deb822 file produced by an external installer. We make it
+# idempotent with `changed_when` based on grep results.
+
+- name: Check that the deb822 sources file exists (24.04 layout)
+  ansible.builtin.stat:
+    path: /etc/apt/sources.list.d/ubuntu.sources
+  register: ubuntu_sources_stat
+
+- name: Fail early if the deb822 sources file is missing
+  ansible.builtin.fail:
+    msg: >-
+      /etc/apt/sources.list.d/ubuntu.sources not found. This role only
+      handles the deb822 sources layout used by Ubuntu 24.04+. For
+      earlier images, edit /etc/apt/sources.list manually.
+  when: not ubuntu_sources_stat.stat.exists
+
+- name: Detect which Ubuntu suites are already configured
+  ansible.builtin.shell: |
+    set -o pipefail
+    grep -E '^Suites:' /etc/apt/sources.list.d/ubuntu.sources \
+      | tr ' ' '\n' \
+      | grep -E '^noble' \
+      | sort -u
+  args:
+    executable: /bin/bash
+  register: existing_apt_suites
+  changed_when: false
+  check_mode: false
+
+- name: Determine the URI used by the existing sources file
+  ansible.builtin.shell: |
+    awk '/^URIs:/ {print $2; exit}' /etc/apt/sources.list.d/ubuntu.sources
+  register: existing_apt_uri
+  changed_when: false
+  check_mode: false
+
+- name: Compute the list of suites we still need to add
+  ansible.builtin.set_fact:
+    apt_suites_to_add: >-
+      {{ base_required_apt_suites
+         | difference(existing_apt_suites.stdout_lines) }}
+
+- name: Back up the original deb822 sources file before first append
+  ansible.builtin.copy:
+    src: /etc/apt/sources.list.d/ubuntu.sources
+    dest: /etc/apt/sources.list.d/ubuntu.sources.disabled.bak
+    remote_src: true
+    force: false   # only on first run; never clobber an existing backup
+    owner: root
+    group: root
+    mode: "0644"
+  when: apt_suites_to_add | length > 0
+
+- name: Append missing suite stanzas to the deb822 sources file
+  ansible.builtin.blockinfile:
+    path: /etc/apt/sources.list.d/ubuntu.sources
+    marker: "## {mark} ANSIBLE MANAGED: {{ item }}"
+    block: |
+      Types: deb
+      URIs: {{ existing_apt_uri.stdout }}
+      Suites: {{ item }}
+      Components: main restricted universe multiverse
+      Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ apt_suites_to_add }}"
+  register: apt_sources_changed
+
+- name: Refresh apt cache after sources changed
+  ansible.builtin.apt:
+    update_cache: true
+  when: apt_sources_changed is changed

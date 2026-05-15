@@ -1,0 +1,19 @@
+---
+# Refresh apt cache (if not done in the last 30 min) and apply upgrades.
+# We use safe upgrade equivalent (dpkg-keep-confold) to avoid prompts.
+
+- name: Apt -- refresh cache (if stale)
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 1800
+
+- name: Apt -- apply available upgrades
+  ansible.builtin.apt:
+    upgrade: safe
+    dpkg_options: "force-confdef,force-confold"
+  register: apt_upgraded
+
+- name: Apt -- autoremove orphaned packages
+  ansible.builtin.apt:
+    autoremove: true
+    purge: true

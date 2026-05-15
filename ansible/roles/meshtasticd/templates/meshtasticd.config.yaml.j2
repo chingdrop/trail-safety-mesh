@@ -1,0 +1,35 @@
+# Managed by Ansible (trail-safety-mesh / roles/meshtasticd).
+#
+# TODO: This template is a STARTING POINT. The meshtasticd config schema
+# evolves with upstream firmware versions; check the version installed on
+# your Pi and compare against:
+#   https://github.com/meshtastic/firmware/blob/master/bin/config-dist.yaml
+# before relying on these field names.
+#
+# Sensitive fields (channel PSK) come from group_vars and may be empty
+# in the template; meshtasticd_primary_channel_psk should normally be
+# supplied via Ansible Vault rather than committed.
+
+Lora:
+  # Region is regulated; you must set this.
+  Region: {{ meshtasticd_region | default('US') }}
+  # TODO: SX1262 vs SX126x_REGULAR; pin once RAK13300 is verified.
+  Module: sx1262
+
+# Display none -- headless Pi gateway.
+Display:
+  Panel: none
+
+# Identity broadcast on the mesh.
+General:
+  LongName: "{{ meshtasticd_long_name | default('FieldGateway') }}"
+  ShortName: "{{ meshtasticd_short_name | default('FGW') }}"
+
+# Primary channel preshared key, base64-encoded. Leave empty here and
+# supply via Vault. meshtasticd will fall back to the default public
+# channel key if this is unset.
+{% if meshtasticd_primary_channel_psk | default('') | length > 0 %}
+Channels:
+  - Name: primary
+    Psk: "{{ meshtasticd_primary_channel_psk }}"
+{% endif %}

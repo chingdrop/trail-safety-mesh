@@ -1,0 +1,28 @@
+---
+# roles/base/tasks/main.yml
+# Wires up the sub-task files in order. Each file is small, focused,
+# and named after the concern it owns.
+
+- name: Apt sources -- ensure noble-updates and noble-backports are configured
+  ansible.builtin.include_tasks: apt_sources.yml
+
+- name: Apt -- update cache and apply available upgrades
+  ansible.builtin.include_tasks: apt_update.yml
+
+- name: Apt -- install baseline admin packages
+  ansible.builtin.include_tasks: packages.yml
+
+- name: Time sync -- chrony in place of timesyncd
+  ansible.builtin.include_tasks: chrony.yml
+
+- name: Hostname
+  ansible.builtin.include_tasks: hostname.yml
+
+- name: SSH -- authorize public key for the operator user
+  ansible.builtin.include_tasks: ssh_key.yml
+
+- name: SSH -- harden sshd (key-only, no X11, idle disconnect)
+  ansible.builtin.include_tasks: ssh_hardening.yml
+
+- name: Unattended upgrades -- security-only, no auto-reboot
+  ansible.builtin.include_tasks: unattended_upgrades.yml

@@ -1,0 +1,6 @@
+---
+mqtt_user: fieldgw
+mqtt_port: 1883
+mqtt_password_file: /etc/mosquitto/passwords
+mqtt_persistent_client_expiration: "7d"
+mqtt_max_keepalive: 300

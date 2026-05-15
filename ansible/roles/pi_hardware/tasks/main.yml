@@ -1,0 +1,41 @@
+---
+# roles/pi_hardware/tasks/main.yml
+# Pi-4 specific hardware enablement:
+#   - operator user group memberships (video, optionally spi/gpio/i2c)
+#   - /dev/vcio udev rule so vcgencmd works without sudo
+#   - SD-wear hardening: fstab options and journald size caps
+#   - RAK6421 + RAK13300 HAT enablement is TODO; see radio.yml.
+
+- name: Operator user is in the base hardware groups
+  ansible.builtin.user:
+    name: "{{ field_gateway_user }}"
+    groups: "{{ pi_hardware_base_groups }}"
+    append: true
+
+- name: Operator user is in radio HAT groups (when RAK HAT is present)
+  ansible.builtin.user:
+    name: "{{ field_gateway_user }}"
+    groups: "{{ pi_hardware_radio_groups }}"
+    append: true
+  when: meshtasticd_rak_hat_present | default(false) | bool
+
+- name: Deploy udev rule for /dev/vcio (vcgencmd without sudo)
+  ansible.builtin.copy:
+    dest: /etc/udev/rules.d/10-vcio.rules
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible (trail-safety-mesh / roles/pi_hardware).
+      # /dev/vcio is the Pi GPU mailbox; vcgencmd uses it for telemetry.
+      # Default Ubuntu udev leaves it 600 root:root, forcing sudo.
+      # Setting group=video, mode=0660 matches Raspberry Pi OS.
+      KERNEL=="vcio", GROUP="video", MODE="0660"
+  notify: Reload udev rules
+
+- name: SD-wear hardening -- fstab and journald
+  ansible.builtin.include_tasks: sd_wear.yml
+
+- name: Radio HAT enablement (TODOs noted in radio.yml)
+  ansible.builtin.include_tasks: radio.yml
+  when: meshtasticd_rak_hat_present | default(false) | bool

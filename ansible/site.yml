@@ -1,0 +1,66 @@
+---
+# site.yml -- top-level playbook for the trail-safety-mesh field gateway.
+#
+# Targets the 'field_gateway' inventory group. Run with:
+#   ansible-playbook -i inventory.ini site.yml --ask-pass --ask-become-pass
+#
+# Roles run in dependency order:
+#   base         -- apt sources, baseline packages, time, hostname, SSH,
+#                   unattended-upgrades.
+#   pi_hardware  -- groups, udev for /dev/vcio, fstab SD-wear options,
+#                   journald caps. Pi-4 specific.
+#   meshtasticd  -- Linux-native Meshtastic daemon. Some steps are TODO
+#                   until the RAK6421 + RAK13300 install path is pinned.
+#   mqtt         -- Mosquitto broker on 1883/tcp.
+#   opentakserver -- OTS host-side prerequisites (including RabbitMQ).
+#                   Disabled by default; enable in group_vars.
+#   firewall     -- UFW rules, RFC1918-scoped. Runs last so all listening
+#                   services exist before we restrict access.
+
+- name: Provision Trail Safety Mesh field gateway
+  hosts: field_gateway
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    - name: Verify target OS is Ubuntu
+      ansible.builtin.assert:
+        that:
+          - ansible_distribution == "Ubuntu"
+        fail_msg: >-
+          This playbook targets Ubuntu 24.04. Detected
+          {{ ansible_distribution }} {{ ansible_distribution_version }}.
+      tags: always
+
+    - name: Warn if not Ubuntu 24.04
+      ansible.builtin.debug:
+        msg: >-
+          OS is Ubuntu {{ ansible_distribution_version }}; playbook is
+          tested on 24.04. Continuing.
+      when: ansible_distribution_version is version('24.04', '!=')
+      tags: always
+
+    - name: Warn if not aarch64
+      ansible.builtin.debug:
+        msg: >-
+          Architecture is {{ ansible_architecture }} (expected aarch64
+          for Raspberry Pi 4). Continuing.
+      when: ansible_architecture != "aarch64"
+      tags: always
+
+  roles:
+    - role: base
+      tags: [base]
+    - role: pi_hardware
+      tags: [pi_hardware]
+    - role: meshtasticd
+      when: meshtasticd_enabled | default(true) | bool
+      tags: [meshtasticd]
+    - role: mqtt
+      when: mqtt_enabled | default(true) | bool
+      tags: [mqtt]
+    - role: opentakserver
+      when: opentakserver_enabled | default(false) | bool
+      tags: [opentakserver]
+    - role: firewall
+      tags: [firewall]

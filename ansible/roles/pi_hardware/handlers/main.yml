@@ -1,0 +1,17 @@
+---
+- name: Reload udev rules
+  ansible.builtin.shell: |
+    udevadm control --reload-rules
+    udevadm trigger --name-match=vcio || true
+  changed_when: false
+
+- name: Restart journald
+  ansible.builtin.systemd:
+    name: systemd-journald
+    state: restarted
+
+- name: Reboot required note
+  ansible.builtin.debug:
+    msg: >-
+      /boot/firmware/config.txt changed. Reboot the Pi before relying on
+      the new hardware overlays.

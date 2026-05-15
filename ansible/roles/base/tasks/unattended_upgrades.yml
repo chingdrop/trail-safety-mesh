@@ -1,0 +1,55 @@
+---
+# Configure unattended-upgrades for a field-deployed node:
+#   - security-only origins (no random regular-pocket churn)
+#   - no automatic reboots (operator decides)
+#   - vacuum unused kernels and dependencies
+#
+# APT config syntax note: APT uses LAST-WINS for repeated scalar keys,
+# but LISTS are ADDITIVE. To truly replace the Allowed-Origins list, you
+# must prefix with #clear (literal '#', NOT a comment).
+
+- name: Daily check + apply timer
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+
+- name: Local override -- security-only, no auto-reboot, vacuum kernels
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/52unattended-upgrades-local
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      // Managed by Ansible (trail-safety-mesh / roles/base).
+      //
+      // APT config uses LAST-WINS for scalar keys but LISTS are ADDITIVE.
+      // To truly replace the Allowed-Origins list, prefix with #clear.
+
+      #clear Unattended-Upgrade::Allowed-Origins;
+      Unattended-Upgrade::Allowed-Origins {
+          "${distro_id}:${distro_codename}-security";
+          "${distro_id}ESMApps:${distro_codename}-apps-security";
+          "${distro_id}ESM:${distro_codename}-infra-security";
+      };
+
+      // Field deployment: never reboot autonomously.
+      Unattended-Upgrade::Automatic-Reboot "false";
+      Unattended-Upgrade::Automatic-Reboot-WithUsers "false";
+
+      // Retry minimally rather than pulling in regular-pocket packages.
+      Unattended-Upgrade::MinimalSteps "true";
+
+      // Keep the SD card uncluttered.
+      Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+      Unattended-Upgrade::Remove-Unused-Dependencies "true";
+
+- name: Ensure unattended-upgrades service is enabled and running
+  ansible.builtin.systemd:
+    name: unattended-upgrades
+    enabled: true
+    state: started

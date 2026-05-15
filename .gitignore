@@ -1,0 +1,54 @@
+# --- Local Ansible inventory / secrets ----------------------------------
+# Real inventory (the .example IS committed).
+ansible/inventory.ini
+
+# Real group vars: keep the .example, ignore everything else by suffix.
+ansible/group_vars/*.local.yml
+ansible/group_vars/*vault*.yml
+ansible/group_vars/field_gateway.yml
+# (Catch-all for any other real group_vars file; .example survives the !rule.)
+ansible/group_vars/*.yml
+!ansible/group_vars/*.yml.example
+
+# Generic Ansible Vault files.
+*.vault.yml
+*.vault
+vault-password*
+.vault_pass*
+
+# --- Python / Ansible caches --------------------------------------------
+__pycache__/
+*.pyc
+*.pyo
+*.retry
+.ansible/
+ansible/.ansible/
+ansible/*.retry
+ansible/roles/*/collections/
+.venv/
+venv/
+
+# --- Local environment files --------------------------------------------
+.env
+.env.*
+!.env.example
+
+# --- Sensitive generated files ------------------------------------------
+*.key
+*.pem
+*.crt
+*.csr
+*.p12
+*.pfx
+*.jks
+secrets/
+secrets.yml
+
+# --- Editor / OS noise --------------------------------------------------
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/

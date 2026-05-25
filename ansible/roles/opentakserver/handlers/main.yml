@@ -1,5 +1,4 @@
 ---
-- name: Restart rabbitmq-server
-  ansible.builtin.systemd:
-    name: rabbitmq-server
-    state: restarted
+# No handlers currently needed. The role pre-installs packages and
+# verifies services; it does not modify RabbitMQ plugin state (OTS owns
+# that), so there is nothing to restart from here.

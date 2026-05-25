@@ -9,12 +9,22 @@ firewall_trusted_v6_networks:
   - "fe80::/10"
 
 firewall_open_ssh: true
-firewall_open_mqtt: true
+# No standalone MQTT broker in this build; default off. See ADR 0002.
+firewall_open_mqtt: false
 firewall_open_ots: false
 firewall_open_meshtasticd_api: false
 
 firewall_port_ssh: 22
 firewall_port_mqtt: 1883
+
+# OpenTAKServer ports, confirmed against a live OTS install:
+#   443  -- HTTPS web UI / API (nginx)
+#   8443 -- Marti / TAK endpoint (nginx, mutual-TLS)
+#   8446 -- certificate enrollment (nginx); ATAK registration fails if blocked
+#   8089 -- CoT TLS, served directly by eud_handler
+firewall_port_ots_https: 443
 firewall_port_ots_marti: 8443
+firewall_port_ots_enrollment: 8446
 firewall_port_ots_cot_tls: 8089
+
 firewall_port_meshtasticd_api: 4403

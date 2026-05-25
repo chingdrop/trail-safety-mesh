@@ -1,0 +1,25 @@
+# Managed by Ansible (trail-safety-mesh / roles/meshtasticd).
+# Drop-in for /etc/meshtasticd/config.d/ -- RAK6421 + RAK13300 (SX1262).
+#
+# Captured from a known-good unit. meshtasticd merges every file under
+# config.d/; this file contributes only the Lora hardware block. Region,
+# channels, and identity are managed by meshtasticd itself / the
+# Meshtastic client, not templated here.
+#
+# GPIO numbers are BCM pin numbers; the IOx comments are the RAK6421
+# slot-1 silk-screen labels.
+
+Lora:
+  ### RAK13300 in Slot 1
+  Module: {{ meshtasticd_lora_module }}
+  IRQ: {{ meshtasticd_lora_irq_gpio }}      # IO6
+  Reset: {{ meshtasticd_lora_reset_gpio }}    # IO4
+  Busy: {{ meshtasticd_lora_busy_gpio }}     # IO5
+{% if meshtasticd_lora_ant_sw_gpio is not none %}
+  Ant_sw: {{ meshtasticd_lora_ant_sw_gpio }}   # IO3
+{% else %}
+  # Ant_sw: <unset>   # IO3 -- omitted, matches known-good config
+{% endif %}
+  DIO3_TCXO_VOLTAGE: {{ meshtasticd_lora_dio3_tcxo_voltage | lower }}
+  DIO2_AS_RF_SWITCH: {{ meshtasticd_lora_dio2_as_rf_switch | lower }}
+  spidev: {{ meshtasticd_lora_spidev }}

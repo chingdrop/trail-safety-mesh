@@ -32,12 +32,20 @@ field_gateway_ssh_pubkey: ""
 # ---------------------------------------------------------------------
 
 meshtasticd_enabled: true
-mqtt_enabled: true
+
+# No standalone MQTT broker in the current build. OpenTAKServer's
+# RabbitMQ is the only message broker. Leave this false unless a custom
+# non-OTS pub/sub need appears; see docs/decisions/0002-*.md.
+mqtt_enabled: false
+
 opentakserver_enabled: false   # OTS prereqs + RabbitMQ; opt-in.
 
 # ---------------------------------------------------------------------
-# MQTT (Mosquitto)
+# MQTT (Mosquitto) -- INACTIVE in the current build
 # ---------------------------------------------------------------------
+# These values are only consumed when mqtt_enabled is true. The current
+# build runs no standalone broker, so they are dormant. Kept so a future
+# Mosquitto deployment is a one-line toggle rather than a re-derivation.
 
 mqtt_user: fieldgw
 mqtt_port: 1883
@@ -60,27 +68,24 @@ mqtt_password: ""
 # ---------------------------------------------------------------------
 # Meshtastic / radio
 # ---------------------------------------------------------------------
-# TODO: The exact install path for meshtasticd on Ubuntu 24.04 arm64
-# with RAK6421 + RAK13300 has not been validated by this repo yet.
-# The role installs meshtasticd via apt from the Meshtastic repo if
-# enabled, but the SPI/GPIO wiring config below is a placeholder.
+# meshtasticd is installed from ppa:meshtastic/beta and configured for
+# the RAK6421 + RAK13300 (SX1262) HAT in slot 1. The role writes a
+# hardware drop-in to /etc/meshtasticd/config.d/; the GPIO/SPI values
+# live in roles/meshtasticd/defaults/main.yml (captured from a working
+# unit -- override there only if your slot or HAT differs).
+#
+# Region, channels, long/short name, and the channel PSK are NOT set by
+# this role. meshtasticd manages those itself, or you set them with a
+# Meshtastic client. LoRa region in particular is legally required --
+# set it on the device; it is intentionally not an Ansible var here, to
+# avoid implying this repo configures something it does not.
 
 # Mark true once the RAK6421 + RAK13300 HAT is physically installed.
-# When true, pi_hardware will enable SPI and add the user to spi/gpio/i2c
-# groups, and meshtasticd will deploy its config template.
+# When true, the pi_hardware role enables SPI and adds the operator
+# user to the spi/gpio/i2c groups. The meshtasticd role installs the
+# package and writes the radio drop-in regardless; this flag only
+# gates the pi_hardware bus/group setup.
 meshtasticd_rak_hat_present: false
-
-# Region for meshtasticd. Set this; LoRa is region-regulated.
-# Example values: US, EU_868, EU_433, AU_915. See Meshtastic docs.
-meshtasticd_region: "US"
-
-# Long-name / short-name on the mesh. Public; ok to commit.
-meshtasticd_long_name: "FieldGateway"
-meshtasticd_short_name: "FGW"
-
-# Channel pre-shared key. SENSITIVE -- leave blank in the example file
-# and supply it via Ansible Vault when you actually deploy.
-meshtasticd_primary_channel_psk: ""
 
 # ---------------------------------------------------------------------
 # Firewall (UFW)
@@ -97,18 +102,29 @@ firewall_trusted_v6_networks:
   - "fe80::/10"    # IPv6 link-local
 
 # Which service ports to open from the trusted networks above.
-# RabbitMQ ports are deliberately NOT in this list; AMQP stays
-# loopback / container-internal. See ADR 0002.
+# RabbitMQ ports (5672 AMQP, 15672 mgmt) are deliberately NOT in this
+# list; AMQP stays loopback / host-internal. See ADR 0002.
 firewall_open_ssh: true
-firewall_open_mqtt: true
+# No standalone MQTT broker in this build; keep this false. If a future
+# Mosquitto is added, this opens its port to the trusted networks.
+firewall_open_mqtt: false
 firewall_open_ots: false           # set true after OTS is installed
 firewall_open_meshtasticd_api: false   # native TCP API (if exposed)
 
 # Override ports here if you customised them.
 firewall_port_ssh: 22
 firewall_port_mqtt: "{{ mqtt_port }}"
-firewall_port_ots_marti: 8443      # OTS Marti API / web UI
-firewall_port_ots_cot_tls: 8089    # OTS CoT TLS
+# OpenTAKServer ports, confirmed against a live OTS install:
+#   443  -- HTTPS web UI / API (nginx)
+#   8443 -- Marti API / TAK endpoint (nginx, mutual-TLS; a plain GET
+#           returns "400 No required SSL certificate" -- that is normal)
+#   8446 -- certificate enrollment path (nginx). ATAK registration FAILS
+#           if this is blocked -- a real gotcha from setup.
+#   8089 -- CoT TLS, served directly by eud_handler (not nginx-fronted)
+firewall_port_ots_https: 443
+firewall_port_ots_marti: 8443
+firewall_port_ots_enrollment: 8446
+firewall_port_ots_cot_tls: 8089
 firewall_port_meshtasticd_api: 4403  # Meshtastic native TCP API
 
 # ---------------------------------------------------------------------

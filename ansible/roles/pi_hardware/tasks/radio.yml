@@ -1,39 +1,49 @@
 ---
-# Radio HAT enablement -- RAK6421 + RAK13300 on the Pi 4.
+# roles/pi_hardware/tasks/radio.yml
 #
-# TODO: The exact sequence to enable SPI / configure pin assignments
-# for the RAK6421 + RAK13300 combination on Ubuntu Server 24.04 (which
-# uses /boot/firmware/config.txt rather than Raspberry Pi OS's
-# /boot/config.txt) has NOT been validated by this repo yet. The tasks
-# below are placeholders that document the intent without making
-# unverified changes.
+# Bus enablement for the RAK6421 + RAK13300 LoRa HAT on a Raspberry
+# Pi 4 running Ubuntu Server 24.04. Included from main.yml only when
+# meshtasticd_rak_hat_present is true.
 #
-# When the install path is pinned, fill these in. Until then, this
-# file is a no-op except for printing a reminder.
+# Ubuntu Server on the Pi uses /boot/firmware/config.txt (not Raspberry
+# Pi OS's /boot/config.txt). The RAK13300 (SX1262) is an SPI device; it
+# needs the SPI bus enabled. I2C/UART are enabled here too because the
+# RAK6421 baseboard exposes them and other RAK modules / sensors may use
+# them; they are cheap to leave on and match how the reference unit was
+# brought up.
+#
+# Pin-level wiring (IRQ/Reset/Busy/SPI dev) is NOT set here -- that is
+# the meshtasticd config.d drop-in's job (roles/meshtasticd). This file
+# only turns the buses on.
+#
+# Any change here notifies "Reboot required note": config.txt changes
+# do not take effect until the Pi reboots.
 
-- name: TODO -- RAK HAT enablement is not yet implemented
-  ansible.builtin.debug:
-    msg: |
-      meshtasticd_rak_hat_present is true, but the RAK6421 + RAK13300
-      enablement steps in roles/pi_hardware/tasks/radio.yml are
-      placeholders. Before deploying to real hardware, fill in:
-        - /boot/firmware/config.txt overlays for SPI + RAK HAT
-        - any required device-tree adjustments
-        - confirmation of the GPIO pins meshtasticd should bind to
-      Then remove this debug task.
+- name: Ensure SPI is enabled in /boot/firmware/config.txt
+  ansible.builtin.lineinfile:
+    path: /boot/firmware/config.txt
+    regexp: '^#?\s*dtparam=spi='
+    line: 'dtparam=spi=on'
+    state: present
+  notify: Reboot required note
 
-# Example skeleton (commented out -- enable when verified):
-#
-# - name: Ensure SPI is enabled in /boot/firmware/config.txt
-#   ansible.builtin.lineinfile:
-#     path: /boot/firmware/config.txt
-#     regexp: '^#?dtparam=spi='
-#     line: 'dtparam=spi=on'
-#   notify: Reboot required note
-#
-# - name: Ensure RAK HAT overlay is loaded
-#   ansible.builtin.lineinfile:
-#     path: /boot/firmware/config.txt
-#     line: 'dtoverlay=spi0-1cs,cs0_pin=8'
-#     state: present
-#   notify: Reboot required note
+- name: Ensure I2C is enabled in /boot/firmware/config.txt
+  ansible.builtin.lineinfile:
+    path: /boot/firmware/config.txt
+    regexp: '^#?\s*dtparam=i2c_arm='
+    line: 'dtparam=i2c_arm=on'
+    state: present
+  notify: Reboot required note
+
+- name: Ensure the primary UART is enabled in /boot/firmware/config.txt
+  ansible.builtin.lineinfile:
+    path: /boot/firmware/config.txt
+    regexp: '^#?\s*enable_uart='
+    line: 'enable_uart=1'
+    state: present
+  notify: Reboot required note
+
+# Note on group membership: the operator user is added to the
+# spi/gpio/i2c groups by main.yml (the "radio HAT groups" task), which
+# is gated on the same meshtasticd_rak_hat_present flag that includes
+# this file. No group work is repeated here.

@@ -4,7 +4,7 @@
 #   - operator user group memberships (video, optionally spi/gpio/i2c)
 #   - /dev/vcio udev rule so vcgencmd works without sudo
 #   - SD-wear hardening: fstab options and journald size caps
-#   - RAK6421 + RAK13300 HAT enablement is TODO; see radio.yml.
+#   - RAK6421 + RAK13300 HAT bus enablement (SPI/I2C/UART); see radio.yml.
 
 - name: Operator user is in the base hardware groups
   ansible.builtin.user:
@@ -36,6 +36,6 @@
 - name: SD-wear hardening -- fstab and journald
   ansible.builtin.include_tasks: sd_wear.yml
 
-- name: Radio HAT enablement (TODOs noted in radio.yml)
+- name: Radio HAT bus enablement (SPI/I2C/UART)
   ansible.builtin.include_tasks: radio.yml
   when: meshtasticd_rak_hat_present | default(false) | bool

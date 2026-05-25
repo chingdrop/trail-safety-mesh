@@ -10,7 +10,7 @@
 #
 # Mosquitto is the broker for Meshtastic MQTT and any other field-side
 # MQTT traffic. It is intentionally NOT shared with RabbitMQ. See
-# docs/decisions/0002-separate-mqtt-and-rabbitmq.md.
+# docs/decisions/0002-no-standalone-mqtt-broker.md.
 
 # ---------------------------------------------------------------------
 # Refuse to proceed without a real password. The config we deploy has

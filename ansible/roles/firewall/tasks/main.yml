@@ -4,11 +4,13 @@
 # UFW posture:
 #   - default deny incoming, allow outgoing, deny routed
 #   - SSH from trusted v4 + v6 private networks
-#   - MQTT (1883/tcp), OTS Marti (8443/tcp), OTS CoT TLS (8089/tcp),
-#     and meshtasticd native TCP API (4403/tcp) each gated by their
-#     own toggle, allowed from trusted v4 networks.
+#   - OTS ports (443 HTTPS, 8443 Marti, 8446 enrollment, 8089 CoT TLS)
+#     gated by firewall_open_ots, allowed from trusted v4 networks.
+#   - meshtasticd native TCP API (4403/tcp) gated by its own toggle.
+#   - MQTT (1883/tcp) gated by firewall_open_mqtt, which defaults false:
+#     there is no standalone broker in this build.
 #   - RabbitMQ (5672/tcp) and its management UI (15672/tcp) are NOT
-#     opened here. AMQP stays local/internal. See ADR 0002.
+#     opened here. AMQP stays host-internal. See ADR 0002.
 #
 # All allow rules are idempotent (ufw with insert semantics).
 
@@ -67,14 +69,37 @@
   when: firewall_open_mqtt | bool
 
 # --- OpenTAKServer ---------------------------------------------------
+# Four ports, confirmed against a live OTS install. All gated by the
+# single firewall_open_ots toggle. RabbitMQ (5672/15672) is deliberately
+# absent -- AMQP stays host-internal. See ADR 0002.
 
-- name: OTS Marti API/web allow rules (trusted IPv4 networks)
+- name: OTS HTTPS web/API allow rules (trusted IPv4 networks)
+  community.general.ufw:
+    rule: allow
+    port: "{{ firewall_port_ots_https }}"
+    proto: tcp
+    src: "{{ item }}"
+    comment: "OTS HTTPS web/API"
+  loop: "{{ firewall_trusted_v4_networks }}"
+  when: firewall_open_ots | bool
+
+- name: OTS Marti/TAK endpoint allow rules (trusted IPv4 networks)
   community.general.ufw:
     rule: allow
     port: "{{ firewall_port_ots_marti }}"
     proto: tcp
     src: "{{ item }}"
-    comment: "OTS Marti API/web"
+    comment: "OTS Marti/TAK endpoint"
+  loop: "{{ firewall_trusted_v4_networks }}"
+  when: firewall_open_ots | bool
+
+- name: OTS certificate enrollment allow rules (trusted IPv4 networks)
+  community.general.ufw:
+    rule: allow
+    port: "{{ firewall_port_ots_enrollment }}"
+    proto: tcp
+    src: "{{ item }}"
+    comment: "OTS cert enrollment"
   loop: "{{ firewall_trusted_v4_networks }}"
   when: firewall_open_ots | bool
 

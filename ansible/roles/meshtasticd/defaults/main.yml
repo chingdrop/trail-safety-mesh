@@ -1,16 +1,132 @@
 ---
-# Source for meshtasticd. The upstream project publishes apt repos via OBS
-# (openSUSE Build Service) at:
-#   https://download.opensuse.org/repositories/network:/Meshtastic:/<branch>/
-# TODO: Confirm the exact branch + URL for Ubuntu 24.04 arm64 (noble) at
-# the time of deployment. The values below are conservative placeholders;
-# verify before the first real run.
-meshtasticd_apt_repo_branch: "alpha"
+# roles/firewall/tasks/main.yml
+#
+# UFW posture:
+#   - default deny incoming, allow outgoing, deny routed
+#   - SSH from trusted v4 + v6 private networks
+#   - OTS ports (443 HTTPS, 8443 Marti, 8446 enrollment, 8089 CoT TLS)
+#     gated by firewall_open_ots, allowed from trusted v4 networks.
+#   - meshtasticd native TCP API (4403/tcp) gated by its own toggle.
+#   - MQTT (1883/tcp) gated by firewall_open_mqtt, which defaults false:
+#     there is no standalone broker in this build.
+#   - RabbitMQ (5672/tcp) and its management UI (15672/tcp) are NOT
+#     opened here. AMQP stays host-internal. See ADR 0002.
+#
+# All allow rules are idempotent (ufw with insert semantics).
 
-# Will be templated into /etc/meshtasticd/config.yaml if the file is owned
-# by us. If you want meshtasticd to keep its packaged default config, set
-# meshtasticd_manage_config: false in group_vars.
-meshtasticd_manage_config: false
+- name: Install UFW
+  ansible.builtin.apt:
+    name: ufw
+    state: present
 
-# Service name as packaged by meshtasticd.
-meshtasticd_service_name: meshtasticd
+- name: Default policy -- deny incoming
+  community.general.ufw:
+    direction: incoming
+    policy: deny
+
+- name: Default policy -- allow outgoing
+  community.general.ufw:
+    direction: outgoing
+    policy: allow
+
+- name: Default policy -- deny routed
+  community.general.ufw:
+    direction: routed
+    policy: deny
+
+# --- SSH --------------------------------------------------------------
+
+- name: SSH allow rules (trusted IPv4 networks)
+  community.general.ufw:
+    rule: allow
+    port: "{{ firewall_port_ssh }}"
+    proto: tcp
+    src: "{{ item }}"
+    comment: "SSH from trusted v4"
+  loop: "{{ firewall_trusted_v4_networks }}"
+  when: firewall_open_ssh | bool
+
+- name: SSH allow rules (trusted IPv6 networks)
+  community.general.ufw:
+    rule: allow
+    port: "{{ firewall_port_ssh }}"
+    proto: tcp
+    src: "{{ item }}"
+    comment: "SSH from trusted v6"
+  loop: "{{ firewall_trusted_v6_networks }}"
+  when: firewall_open_ssh | bool
+
+# --- MQTT (Mosquitto) -------------------------------------------------
+
+- name: Mosquitto MQTT allow rules (trusted IPv4 networks)
+  community.general.ufw:
+    rule: allow
+    port: "{{ firewall_port_mqtt }}"
+    proto: tcp
+    src: "{{ item }}"
+    comment: "Mosquitto MQTT"
+  loop: "{{ firewall_trusted_v4_networks }}"
+  when: firewall_open_mqtt | bool
+
+# --- OpenTAKServer ---------------------------------------------------
+# Four ports, confirmed against a live OTS install. All gated by the
+# single firewall_open_ots toggle. RabbitMQ (5672/15672) is deliberately
+# absent -- AMQP stays host-internal. See ADR 0002.
+
+- name: OTS HTTPS web/API allow rules (trusted IPv4 networks)
+  community.general.ufw:
+    rule: allow
+    port: "{{ firewall_port_ots_https }}"
+    proto: tcp
+    src: "{{ item }}"
+    comment: "OTS HTTPS web/API"
+  loop: "{{ firewall_trusted_v4_networks }}"
+  when: firewall_open_ots | bool
+
+- name: OTS Marti/TAK endpoint allow rules (trusted IPv4 networks)
+  community.general.ufw:
+    rule: allow
+    port: "{{ firewall_port_ots_marti }}"
+    proto: tcp
+    src: "{{ item }}"
+    comment: "OTS Marti/TAK endpoint"
+  loop: "{{ firewall_trusted_v4_networks }}"
+  when: firewall_open_ots | bool
+
+- name: OTS certificate enrollment allow rules (trusted IPv4 networks)
+  community.general.ufw:
+    rule: allow
+    port: "{{ firewall_port_ots_enrollment }}"
+    proto: tcp
+    src: "{{ item }}"
+    comment: "OTS cert enrollment"
+  loop: "{{ firewall_trusted_v4_networks }}"
+  when: firewall_open_ots | bool
+
+- name: OTS CoT TLS allow rules (trusted IPv4 networks)
+  community.general.ufw:
+    rule: allow
+    port: "{{ firewall_port_ots_cot_tls }}"
+    proto: tcp
+    src: "{{ item }}"
+    comment: "OTS CoT TLS"
+  loop: "{{ firewall_trusted_v4_networks }}"
+  when: firewall_open_ots | bool
+
+# --- meshtasticd native TCP API (optional) ---------------------------
+
+- name: meshtasticd native TCP API allow rules (trusted IPv4 networks)
+  community.general.ufw:
+    rule: allow
+    port: "{{ firewall_port_meshtasticd_api }}"
+    proto: tcp
+    src: "{{ item }}"
+    comment: "meshtasticd TCP API"
+  loop: "{{ firewall_trusted_v4_networks }}"
+  when: firewall_open_meshtasticd_api | bool
+
+# --- Enable UFW ------------------------------------------------------
+
+- name: Enable UFW
+  community.general.ufw:
+    state: enabled

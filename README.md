@@ -18,11 +18,9 @@ A Raspberry Pi 4 field gateway running, in layers:
 2. Pi-specific hardware enablement (video/GPIO/SPI/I2C groups, udev rules
    for `/dev/vcio`, intended support for the RAK6421 + RAK13300 LoRa HAT).
 3. `meshtasticd` — the Linux-native Meshtastic daemon — running on the Pi.
-4. Mosquitto MQTT broker for Meshtastic and other field-side MQTT traffic
-   on `1883/tcp`.
-5. (Optional) OpenTAKServer host-side prerequisites, including its own
-   AMQP broker (RabbitMQ on `5672/tcp`). **MQTT and AMQP remain separate
-   stacks; see ADR 0002.**
+4. (Optional) OpenTAKServer host-side prerequisites, including its own
+   AMQP broker (RabbitMQ on `5672/tcp`). **There is no standalone MQTT
+   broker in this build; RabbitMQ is the only broker. See ADR 0002.**
 
 ## Target
 
@@ -112,7 +110,7 @@ trail-safety-mesh/
 │   ├── architecture.md
 │   └── decisions/
 │       ├── 0001-use-ansible-for-infrastructure.md
-│       └── 0002-separate-mqtt-and-rabbitmq.md
+│       └── 0002-no-standalone-mqtt-broker.md
 └── examples/
     └── README.md
 ```

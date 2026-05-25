@@ -1,84 +1,76 @@
 ---
 # roles/meshtasticd/tasks/main.yml
 #
-# Installs the Linux-native Meshtastic daemon. The exact install method
-# on Ubuntu 24.04 (arm64) with a RAK6421 + RAK13300 HAT is not pinned
-# at the time of writing -- the upstream project distributes meshtasticd
-# via OBS (openSUSE Build Service) repos, and the right branch/tag pair
-# changes over time. Treat the steps below as a scaffold and verify
-# against upstream docs before each real deployment.
+# Installs and configures the Linux-native Meshtastic daemon for the
+# RAK6421 + RAK13300 (SX1262) HAT on a Raspberry Pi 4.
 #
-# References to confirm (TODO):
-#   - https://meshtastic.org/docs/hardware/devices/linux-native-hardware/
-#   - https://github.com/meshtastic/firmware (meshtasticd subdir)
-#   - The OBS download.opensuse.org repo URL for noble + arm64.
+# Install source: the Meshtastic project's Ubuntu PPA. Confirmed
+# working on Ubuntu 24.04 arm64 as ppa:meshtastic/beta.
 #
-# This file deliberately uses ansible.builtin.debug + when: false blocks
-# in places where the upstream commands would normally run, so a
-# misconfigured run doesn't trash a working host.
-
-- name: TODO -- meshtasticd install path is not pinned
-  ansible.builtin.debug:
-    msg: |
-      The meshtasticd role is a scaffold. Before deploying to real
-      hardware, confirm and uncomment the apt repo + package install
-      block below. Until then, this role only deploys config (if asked)
-      and sets group memberships; it does not install meshtasticd itself.
+# Radio config: meshtasticd reads hardware drop-ins from
+# /etc/meshtasticd/config.d/. This role writes one drop-in for the
+# RAK6421+RAK13300 slot-1 wiring, templated from known-good values in
+# defaults/main.yml. It does NOT manage region / channels / identity --
+# those are set through meshtasticd or a Meshtastic client.
+#
+# Prerequisite: SPI must be enabled and the operator user must be in
+# the spi/gpio/i2c groups. That is the pi_hardware role's job and is
+# gated there by meshtasticd_rak_hat_present.
 
 # ---------------------------------------------------------------------
-# Apt repo + package install -- INTENTIONALLY DISABLED until verified.
-# Uncomment when you have validated the URL and key.
-# ---------------------------------------------------------------------
-#
-# - name: Add meshtasticd apt signing key
-#   ansible.builtin.get_url:
-#     url: "https://download.opensuse.org/repositories/network:/Meshtastic:/{{ meshtasticd_apt_repo_branch }}/Debian_12/Release.key"
-#     dest: /etc/apt/keyrings/meshtasticd.asc
-#     mode: "0644"
-#
-# - name: Add meshtasticd apt source
-#   ansible.builtin.copy:
-#     dest: /etc/apt/sources.list.d/meshtasticd.list
-#     mode: "0644"
-#     content: |
-#       deb [signed-by=/etc/apt/keyrings/meshtasticd.asc] \
-#         https://download.opensuse.org/repositories/network:/Meshtastic:/{{ meshtasticd_apt_repo_branch }}/Debian_12/ ./
-#
-# - name: Install meshtasticd
-#   ansible.builtin.apt:
-#     name: meshtasticd
-#     state: present
-#     update_cache: true
-
-# ---------------------------------------------------------------------
-# Config template
+# Package install from the Meshtastic PPA.
 # ---------------------------------------------------------------------
 
-- name: Ensure /etc/meshtasticd exists before templating config
+- name: Ensure software-properties-common is present (for add-apt-repository)
+  ansible.builtin.apt:
+    name: software-properties-common
+    state: present
+  when: meshtasticd_install_package | bool
+
+- name: Add the Meshtastic PPA
+  ansible.builtin.apt_repository:
+    repo: "{{ meshtasticd_apt_ppa }}"
+    state: present
+    update_cache: true
+  when: meshtasticd_install_package | bool
+
+- name: Install meshtasticd
+  ansible.builtin.apt:
+    name: meshtasticd
+    state: present
+  when: meshtasticd_install_package | bool
+
+# ---------------------------------------------------------------------
+# Radio hardware drop-in under config.d/.
+# ---------------------------------------------------------------------
+
+- name: Ensure /etc/meshtasticd/config.d exists
   ansible.builtin.file:
-    path: /etc/meshtasticd
+    path: /etc/meshtasticd/config.d
     state: directory
     owner: root
     group: root
     mode: "0755"
-  when: meshtasticd_manage_config | bool
+  when: meshtasticd_manage_radio_config | bool
 
-- name: Deploy meshtasticd config (when meshtasticd_manage_config is true)
+- name: Deploy RAK6421 + RAK13300 radio drop-in
   ansible.builtin.template:
-    src: meshtasticd.config.yaml.j2
-    dest: /etc/meshtasticd/config.yaml
+    src: lora-rak.yaml.j2
+    dest: "/etc/meshtasticd/config.d/{{ meshtasticd_radio_config_filename }}"
     owner: root
     group: root
-    mode: "0640"
+    mode: "0644"
     backup: true
-  when: meshtasticd_manage_config | bool
+  when: meshtasticd_manage_radio_config | bool
   notify: Restart meshtasticd
 
 # ---------------------------------------------------------------------
-# Service enablement -- only when the unit actually exists.
+# Service enablement. Only act if the unit actually exists -- on a run
+# where meshtasticd_install_package is false and the package was never
+# installed, there is nothing to enable.
 # ---------------------------------------------------------------------
 
-- name: Check if meshtasticd systemd unit exists
+- name: Check whether the meshtasticd systemd unit exists
   ansible.builtin.stat:
     path: "/lib/systemd/system/{{ meshtasticd_service_name }}.service"
   register: meshtasticd_unit

@@ -34,8 +34,8 @@ The two repos that ship this system have separate responsibilities:
 | Power             | Official Pi 4 supply or vehicle DC-DC; UPS HAT optional.  |
 
 `meshtasticd_rak_hat_present` in group vars gates the SPI/GPIO/I2C group
-membership grants and the (currently TODO) `/boot/firmware/config.txt`
-overlays for the RAK HAT.
+membership grants and the `/boot/firmware/config.txt` bus-enable lines
+for the RAK HAT (`roles/pi_hardware/tasks/radio.yml`).
 
 ## Software layers
 
@@ -51,20 +51,17 @@ overlays for the RAK HAT.
                                  │           │
                           (RabbitMQ 5672)    │
                                  │           │
-                              ┌──▼──┐    ┌───▼────────┐
-                              │ AMQP │    │  Postgres  │
-                              │ RMQ │    └────────────┘
-                              └─────┘
-                                 ╳     ← no bridge by default
-                                 ╳        (see ADR 0002)
-                              ┌──────────────────────┐
-                              │   Mosquitto MQTT     │   :1883
-                              │   (auth, no anon)    │
-                              └──────────┬───────────┘
-                                         │
-                                  (MQTT pub/sub)
-                                         │
-                              ┌──────────▼──────────┐
+                              ┌──▼───────┐ ┌─▼──────────┐
+                              │ RabbitMQ │ │  Postgres  │
+                              │  AMQP +  │ └────────────┘
+                              │  MQTT-   │
+                              │  ingest  │   the only broker
+                              └──▲───────┘
+                                 │
+                  Meshtastic ServiceEnvelope ingestion
+                  (amq.topic / opentakserver.2.e.<channel>)
+                                 │
+                              ┌──┴──────────────────┐
                               │     meshtasticd     │   Linux-native
                               │  (RAK6421+RAK13300) │   Meshtastic daemon
                               └──────────┬──────────┘
@@ -84,24 +81,18 @@ The Linux-native Meshtastic daemon. Replaces the previous design where
 a USB-attached RAK4631 acted as the Pi's radio. With meshtasticd plus
 the RAK6421+RAK13300 HAT, the Pi *is* the radio node.
 
-- Provisioned by `roles/meshtasticd`. **The exact apt repo URL + package
-  install path for noble/arm64 is not yet pinned**; the role ships as a
-  scaffold with TODOs and does not run unverified install commands.
-- Config goes in `/etc/meshtasticd/config.yaml`, deployed from a Jinja
-  template only when `meshtasticd_manage_config: true`.
-- Sensitive fields (channel PSK) must be supplied via Ansible Vault.
-
-### Mosquitto
-
-Local MQTT broker on `1883/tcp`. Authenticated; anonymous denied.
-
-- Provisioned by `roles/mqtt`.
-- Single field user (`mqtt_user`, default `fieldgw`) created by
-  `mosquitto_passwd`. Password is provided via `mqtt_password` in group
-  vars (preferably Vault). The role **refuses to run** if
-  `mqtt_password` is empty — it will not silently downgrade to
-  anonymous access.
-- Logs to journald, which `roles/pi_hardware` caps at 200 MB on disk.
+- Provisioned by `roles/meshtasticd`. Installed from the Meshtastic
+  Ubuntu PPA `ppa:meshtastic/beta` (the more conservative of the two
+  PPA channels — chosen so the radio daemon is not exposed to
+  alpha-channel churn).
+- Hardware config is a drop-in under `/etc/meshtasticd/config.d/`.
+  meshtasticd merges every file in that directory; the role templates
+  one file for the RAK6421+RAK13300 slot-1 wiring (SX1262, with the
+  IRQ/Reset/Busy GPIO mapping captured from a working unit). The
+  GPIO/SPI values live in `roles/meshtasticd/defaults/main.yml`.
+- Region, channels, and identity are **not** managed by this role.
+  meshtasticd or a Meshtastic client sets those. LoRa region is
+  legally required and is set on the device, not in Ansible.
 
 ### OpenTAKServer (optional)
 
@@ -121,41 +112,53 @@ nginx, postgresql, rabbitmq-server).
   ```
   systemctl is-active opentakserver cot_parser eud_handler eud_handler_ssl mediamtx
   ```
-- Before running the OTS installer, **Mosquitto stays running**. The
-  installer may try to bind its own broker on 1883/tcp; if it does, it
-  will fail — that is the correct outcome. Mosquitto owns 1883/tcp.
-  Resolve the collision by removing any listener-on-1883 directives
-  from whatever `/etc/mosquitto/conf.d/*.conf` files the OTS installer
-  drops, not by stopping Mosquitto. The legacy stop behaviour is
-  gated behind `opentakserver_stop_mosquitto_during_install`, which
-  defaults to **false** and overrides ADR 0002 if enabled.
+- This build runs no standalone MQTT broker, so the OTS installer is
+  free to configure RabbitMQ — including its `rabbitmq_mqtt` plugin —
+  however it needs. There is nothing for it to collide with on
+  `1883/tcp`.
 
 ### RabbitMQ
 
-RabbitMQ is **only an OpenTAKServer dependency** in this architecture.
+RabbitMQ is installed as an OpenTAKServer dependency, and in this
+build it is the **only** message broker.
 
-- AMQP on `5672/tcp` for OpenTAKServer / internal application messaging.
-- **Not** the Meshtastic MQTT broker; that role is Mosquitto's alone.
-- The `rabbitmq_mqtt` plugin **must not** be enabled, and the
-  `opentakserver` role explicitly disables it on every run to keep
-  1883/tcp clear for Mosquitto.
-- Not exposed by the firewall role. Stays localhost / internal.
-- See `docs/decisions/0002-separate-mqtt-and-rabbitmq.md`.
+- AMQP on `5672/tcp` for OTS-internal application messaging.
+- Also carries the Meshtastic ingestion path when OTS Meshtastic
+  support is enabled: `ServiceEnvelope` messages on the `amq.topic`
+  exchange, routing keys `opentakserver.2.e.<channel>`.
+- Whether the `rabbitmq_mqtt` plugin is enabled is left to OTS; this
+  repo does not force it on or off. With no Mosquitto present there is
+  no `1883/tcp` contention either way.
+- Not exposed by the firewall role. Stays localhost / host-internal.
+- See `docs/decisions/0002-no-standalone-mqtt-broker.md`.
+
+### MQTT (Mosquitto) — not deployed
+
+There is no standalone MQTT broker in the current build. The `mqtt`
+role still exists for a possible future need (a custom `field-gateway-pi`
+pub/sub service), but `mqtt_enabled` defaults to `false` and the role
+is not in the default `site.yml` run. See ADR 0002.
 
 ## Network posture
 
 UFW rules (`roles/firewall`) are RFC1918-scoped by default. Each
 inbound service is gated by an `_open` toggle in group vars:
 
-| Port    | Service              | Toggle                        | Default |
-| ------- | -------------------- | ----------------------------- | ------- |
-| 22/tcp  | SSH                  | `firewall_open_ssh`           | true    |
-| 1883/tcp| Mosquitto MQTT       | `firewall_open_mqtt`          | true    |
-| 4403/tcp| meshtasticd TCP API  | `firewall_open_meshtasticd_api` | false |
-| 8089/tcp| OTS CoT TLS          | `firewall_open_ots`           | false   |
-| 8443/tcp| OTS Marti / web      | `firewall_open_ots`           | false   |
-| 5672/tcp| RabbitMQ AMQP        | (never opened)                | n/a     |
-| 15672/tcp| RabbitMQ mgmt UI    | (never opened)                | n/a     |
+| Port    | Service              | Toggle                          | Default |
+| ------- | -------------------- | ------------------------------- | ------- |
+| 22/tcp  | SSH                  | `firewall_open_ssh`             | true    |
+| 443/tcp | OTS HTTPS web/API    | `firewall_open_ots`             | false   |
+| 8443/tcp| OTS Marti / TAK      | `firewall_open_ots`             | false   |
+| 8446/tcp| OTS cert enrollment  | `firewall_open_ots`             | false   |
+| 8089/tcp| OTS CoT TLS          | `firewall_open_ots`             | false   |
+| 4403/tcp| meshtasticd TCP API  | `firewall_open_meshtasticd_api` | false   |
+| 1883/tcp| (future Mosquitto)   | `firewall_open_mqtt`            | false   |
+| 5672/tcp| RabbitMQ AMQP        | (never opened)                  | n/a     |
+| 15672/tcp| RabbitMQ mgmt UI    | (never opened)                  | n/a     |
+
+OTS certificate enrollment on `8446/tcp` is easy to miss: ATAK tablet
+registration fails outright if it is blocked. All four OTS ports are
+gated by the single `firewall_open_ots` toggle.
 
 ## Custom runtime code lives elsewhere
 
@@ -171,5 +174,5 @@ selective-translation service that lives in
 ## See also
 
 - `docs/decisions/0001-use-ansible-for-infrastructure.md`
-- `docs/decisions/0002-separate-mqtt-and-rabbitmq.md`
+- `docs/decisions/0002-no-standalone-mqtt-broker.md`
 - Companion repo: `field-gateway-pi`

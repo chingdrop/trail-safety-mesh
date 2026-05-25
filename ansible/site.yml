@@ -11,7 +11,10 @@
 #                   journald caps. Pi-4 specific.
 #   meshtasticd  -- Linux-native Meshtastic daemon. Some steps are TODO
 #                   until the RAK6421 + RAK13300 install path is pinned.
-#   mqtt         -- Mosquitto broker on 1883/tcp.
+#   mqtt         -- Mosquitto broker on 1883/tcp. DISABLED by default;
+#                   the current build uses no standalone broker. Opt in
+#                   via mqtt_enabled in group_vars only if a custom
+#                   pub/sub need appears.
 #   opentakserver -- OTS host-side prerequisites (including RabbitMQ).
 #                   Disabled by default; enable in group_vars.
 #   firewall     -- UFW rules, RFC1918-scoped. Runs last so all listening
@@ -56,8 +59,14 @@
     - role: meshtasticd
       when: meshtasticd_enabled | default(true) | bool
       tags: [meshtasticd]
+    # MQTT (Mosquitto) is disabled by default. The current build has no
+    # standalone broker: OpenTAKServer's RabbitMQ is the only message
+    # broker. Mosquitto becomes relevant again only if a custom pub/sub
+    # need appears (e.g. a field-gateway-pi bridge service). To re-enable,
+    # set mqtt_enabled: true in group_vars and provide mqtt_password.
+    # See docs/decisions/0002-no-standalone-mqtt-broker.md.
     - role: mqtt
-      when: mqtt_enabled | default(true) | bool
+      when: mqtt_enabled | default(false) | bool
       tags: [mqtt]
     - role: opentakserver
       when: opentakserver_enabled | default(false) | bool

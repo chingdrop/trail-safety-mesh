@@ -3,14 +3,6 @@
 # The OTS installer itself is interactive and NOT run by Ansible.
 opentakserver_install_prereqs: true
 
-# Mosquitto owns 1883/tcp in this architecture. OpenTAKServer must NOT
-# claim that port; see docs/decisions/0002-separate-mqtt-and-rabbitmq.md.
-# This toggle exists only as an escape hatch for one-off, hand-managed
-# installs where the operator explicitly wants the legacy behaviour.
-# Leave it false. If you ever flip it true, you are overriding ADR 0002
-# and you own the consequences.
-opentakserver_stop_mosquitto_during_install: false
-
 # Package sets the OTS installer expects to be present.
 # Grouped here for clarity; each group exists for a reason documented
 # in tasks/main.yml.
